@@ -18,20 +18,11 @@ Crash and unexpected controller-disconnect reports are written as timestamped `.
 to the `crash` folder beside the running application. After a controller disconnects, the app
 now retries the HID connection; output reports use the length advertised by the connected device.
 
-What I'm currently working on:
-1. Option to enable automatic startup with Windows.
-2. Adding support for up to 4 controllers.
 
 The window uses `DualSenseCompanion\img\background.jpg` and
 `DualSenseCompanion\img\logo.jpg`; replace these files to customize its artwork.
 
-Roadmap:
-1. Custom controls mapping.
-2. Lightbar customization.
-3. Battery indicator.
-4. Headphone jack support for game audio.
-
-
+## credits to Sar1911 : https://github.com/Sar1911/DualSenseCompanion
 A huge thanks goes to:
 1. ViGEm (Virtual Gamepad Emulation Driver) – For providing the essential Xbox 360 controller emulation.
 2. HidHide – For allowing HID device filtering and hiding.
