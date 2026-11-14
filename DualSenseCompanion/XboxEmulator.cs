@@ -11,6 +11,11 @@ class XboxEmulator
 
     public static void Initialize()
     {
+        if (_controller != null)
+        {
+            return;
+        }
+
         _client = new ViGEmClient();
         _controller = _client.CreateXbox360Controller();
         _controller.Connect();
@@ -30,7 +35,7 @@ class XboxEmulator
 
     private static void OnFeedbackReceived(object sender, Xbox360FeedbackReceivedEventArgs e)
     {
-        ControllerManager.SendVibrationToPS5(e.LargeMotor, e.SmallMotor);
+        ControllerManager.SendVibrationToController(e.LargeMotor, e.SmallMotor);
     }
 
     public static void SetButtonState(Xbox360Button button, bool pressed)
@@ -48,5 +53,19 @@ class XboxEmulator
     public static void SetAxisState(Xbox360Axis axis, short value)
     {
         _controller?.SetAxisValue(axis, value);
+    }
+
+    public static void Shutdown()
+    {
+        if (_controller == null)
+        {
+            return;
+        }
+
+        _controller.FeedbackReceived -= OnFeedbackReceived;
+        _controller.Disconnect();
+        _controller = null;
+        _client?.Dispose();
+        _client = null;
     }
 }

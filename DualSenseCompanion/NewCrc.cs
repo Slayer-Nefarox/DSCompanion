@@ -51,5 +51,20 @@ namespace DualSenseCompanion
 
             return num;
         }
+
+        public static uint ComputeDualShock4BluetoothCRC32(byte[] byteData)
+        {
+            uint crc = uint.MaxValue;
+            foreach (byte value in byteData)
+            {
+                crc ^= value;
+                for (int bit = 0; bit < 8; bit++)
+                {
+                    crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+                }
+            }
+
+            return ~crc;
+        }
     }
 }

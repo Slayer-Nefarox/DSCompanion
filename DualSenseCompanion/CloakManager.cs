@@ -1,53 +1,53 @@
 ﻿using System.Diagnostics;
 using Nefarius.Drivers.HidHide;
 using System.Management;
+using System.Threading;
 
 class CloakManager
 {
     private static HidHideControlService _hidHide = new HidHideControlService();
-    private static string _ps5ControllerInstanceId;
-    private static string _exePath = Process.GetCurrentProcess().MainModule.FileName;
-    private static bool controllerConnected;
+    private static string? _controllerInstanceId;
+    private static string _exePath = Process.GetCurrentProcess().MainModule?.FileName
+        ?? Environment.ProcessPath
+        ?? throw new InvalidOperationException("Unable to determine the application path.");
 
-    public static void HidePS5Controller()
+    public static void HideController(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         if (!_hidHide.IsInstalled)
         {
             Console.WriteLine("HidHide is not installed. Skipping controller hiding.");
             return;
         }
 
-        _ps5ControllerInstanceId = FindPS5ControllerInstanceId();
+        _controllerInstanceId = FindControllerInstanceId(cancellationToken);
 
-        if (string.IsNullOrEmpty(_ps5ControllerInstanceId))
+        if (string.IsNullOrEmpty(_controllerInstanceId))
         {
-            Console.WriteLine("No DualSense controller found.");
+            Console.WriteLine("No supported PlayStation controller found.");
             return;
         }
 
-        Console.WriteLine($"Attempting to block controller: {_ps5ControllerInstanceId}");
+        cancellationToken.ThrowIfCancellationRequested();
+        Console.WriteLine($"Attempting to block controller: {_controllerInstanceId}");
 
         WhitelistCurrentApp();
 
-        if (!_hidHide.BlockedInstanceIds.Contains(_ps5ControllerInstanceId))
+        if (!_hidHide.BlockedInstanceIds.Contains(_controllerInstanceId))
         {
-            _hidHide.AddBlockedInstanceId(_ps5ControllerInstanceId);
-            Console.WriteLine($"Added PS5 Controller ({_ps5ControllerInstanceId}) to HidHide block list.");
+            _hidHide.AddBlockedInstanceId(_controllerInstanceId);
+            Console.WriteLine($"Added PlayStation controller ({_controllerInstanceId}) to HidHide block list.");
         }
         else
         {
-            Console.WriteLine("PS5 Controller is already in the block list.");
+            Console.WriteLine("PlayStation controller is already in the block list.");
         }
 
         _hidHide.IsActive = true;
-        Console.WriteLine("PS5 Controller is now hidden!");
-
-        // Unhides controller and removes app whitlist from HidHide on exit
-        AppDomain.CurrentDomain.ProcessExit += (s, e) => UnhidePS5Controller();
-
+        Console.WriteLine("PlayStation controller is now hidden!");
     }
 
-    public static void UnhidePS5Controller()
+    public static void UnhideController()
     {
         if (!_hidHide.IsInstalled)
         {
@@ -55,20 +55,20 @@ class CloakManager
             return;
         }
 
-        if (string.IsNullOrEmpty(_ps5ControllerInstanceId))
+        if (string.IsNullOrEmpty(_controllerInstanceId))
         {
-            Console.WriteLine("No DualSense controller found.");
+            Console.WriteLine("No supported PlayStation controller found.");
             return;
         }
 
-        if (_hidHide.BlockedInstanceIds.Contains(_ps5ControllerInstanceId))
+        if (_hidHide.BlockedInstanceIds.Contains(_controllerInstanceId))
         {
-            _hidHide.RemoveBlockedInstanceId(_ps5ControllerInstanceId);
-            Console.WriteLine("PS5 Controller removed from HidHide block list.");
+            _hidHide.RemoveBlockedInstanceId(_controllerInstanceId);
+            Console.WriteLine("PlayStation controller removed from HidHide block list.");
         }
 
         _hidHide.IsActive = false;
-        Console.WriteLine("PS5 Controller is now visible!");
+        Console.WriteLine("PlayStation controller is now visible!");
 
         if (_hidHide.ApplicationPaths.Contains(_exePath))
         {
@@ -78,7 +78,7 @@ class CloakManager
     }
 
     //This version of the function is more optimized and actually waits for the user to plug in the controller
-    public static string FindPS5ControllerInstanceId()
+    public static string FindControllerInstanceId(CancellationToken cancellationToken)
     {
 
         Console.WriteLine("Looking for controller...");
@@ -86,6 +86,7 @@ class CloakManager
 
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
 
             devices.Clear();
             devices.AddRange(GetAllHIDDevices());
@@ -93,52 +94,27 @@ class CloakManager
             foreach (var device in devices)
             {
 
-                if (device.Contains("VID_054C&PID_0CE6"))
+                if (IsSupportedController(device))
                 {
-                    Console.WriteLine("Found DualSense Controller (USB)");
-                    controllerConnected = true;
-                    return device;
-                }
-
-                if (device.Contains("_VID&0002054C_PID&0CE6"))
-                {
-                    Console.WriteLine("Found DualSense Controller (Bluetooth)");
-                    controllerConnected = true;
+                    Console.WriteLine($"Found PlayStation controller: {device}");
                     return device;
                 }
             }
 
-            Thread.Sleep(1000); //1 second delay before the next check
+            cancellationToken.WaitHandle.WaitOne(1000);
         }
 
     }
 
-    //public static string FindPS5ControllerInstanceId()
-    //{
-    //    var devices = GetAllHIDDevices();
-
-    //    foreach (var device in devices)
-    //    {
-    //        Console.WriteLine($"Checking Device: {device}");
-
-    //        // USB DualSense
-    //        if (device.Contains("VID_054C&PID_0CE6"))
-    //        {
-    //            Console.WriteLine("Found DualSense Controller (USB)");
-    //            return device;
-    //        }
-
-    //        // Bluetooth DualSense
-    //        if (device.Contains("_VID&0002054C_PID&0CE6"))
-    //        {
-    //            Console.WriteLine("Found DualSense Controller (Bluetooth)");
-    //            return device;
-    //        }
-    //    }
-
-    //    Console.WriteLine("No DualSense controller found.");
-    //    return null;
-    //}
+    private static bool IsSupportedController(string deviceId)
+    {
+        return deviceId.Contains("VID_054C&PID_0CE6", StringComparison.OrdinalIgnoreCase)
+            || deviceId.Contains("VID_054C&PID_05C4", StringComparison.OrdinalIgnoreCase)
+            || deviceId.Contains("VID_054C&PID_09CC", StringComparison.OrdinalIgnoreCase)
+            || deviceId.Contains("_VID&0002054C_PID&0CE6", StringComparison.OrdinalIgnoreCase)
+            || deviceId.Contains("_VID&0002054C_PID&05C4", StringComparison.OrdinalIgnoreCase)
+            || deviceId.Contains("_VID&0002054C_PID&09CC", StringComparison.OrdinalIgnoreCase);
+    }
 
     public static List<string> GetAllHIDDevices()
     {
@@ -161,6 +137,7 @@ class CloakManager
         catch (Exception ex)
         {
             Console.WriteLine($"Error retrieving HID devices: {ex.Message}");
+            CrashReporter.Report("Failed to enumerate HID devices", ex);
         }
 
         return deviceList;

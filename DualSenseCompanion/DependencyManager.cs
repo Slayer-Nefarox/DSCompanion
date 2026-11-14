@@ -24,8 +24,11 @@ public static class DependencyManager
             {
                 Console.WriteLine("Failed to install ViGEm Bus Driver.");
 
-                Console.WriteLine("\nPress any key to exit the process...");
-                Console.ReadKey();
+                MessageBox.Show(
+                    "The ViGEm Bus Driver could not be installed. The application will now close.",
+                    "Dependency installation failed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
                 Environment.Exit(0);
             }
         }
@@ -42,8 +45,11 @@ public static class DependencyManager
             {
                 Console.WriteLine("Failed to install HidHide.");
 
-                Console.WriteLine("\nPress any key to exit the process...");
-                Console.ReadKey();
+                MessageBox.Show(
+                    "HidHide could not be installed. The application will now close.",
+                    "Dependency installation failed",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
                 Environment.Exit(0);
             }
         }
@@ -79,8 +85,9 @@ public static class DependencyManager
                 return driverExists && serviceExists;
             }
         }
-        catch
+        catch (Exception ex)
         {
+            CrashReporter.Report("Failed to query ViGEm Bus service status", ex);
             return false;
         }
     }
@@ -114,6 +121,7 @@ public static class DependencyManager
         catch (Exception ex)
         {
             Console.WriteLine($"Error installing ViGEm Bus Driver: {ex.Message}");
+            CrashReporter.Report("Failed to install ViGEm Bus Driver", ex);
             return false;
         }
     }
@@ -131,8 +139,9 @@ public static class DependencyManager
             ServiceController service = new ServiceController("HidHide");
             return service.Status == ServiceControllerStatus.Running;
         }
-        catch
+        catch (Exception ex)
         {
+            CrashReporter.Report("Failed to query HidHide service status", ex);
             return false;
         }
     }
@@ -166,6 +175,7 @@ public static class DependencyManager
         catch (Exception ex)
         {
             Console.WriteLine($"Error installing HidHide: {ex.Message}");
+            CrashReporter.Report("Failed to install HidHide", ex);
             return false;
         }
     }
