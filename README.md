@@ -34,7 +34,7 @@ Roadmap:
 1. Battery indicator.
 2. Headphone jack support for game audio.
 
-
+##Credits to the original: https://github.com/Sar1911/DualSenseCompanion
 A huge thanks goes to:
 1. ViGEm (Virtual Gamepad Emulation Driver) – For providing the essential Xbox 360 controller emulation.
 2. HidHide – For allowing HID device filtering and hiding.
