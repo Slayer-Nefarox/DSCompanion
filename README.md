@@ -2,6 +2,8 @@
 
 A basic companion app for DualSense and DualShock 4 controllers for Windows. It emulates an Xbox 360 controller so you can play almost all PC games with your PlayStation controller!
 
+## Credits to the original: https://github.com/Sar1911/DualSenseCompanion
+
 What This App Can Do:
 1. Xbox 360 controller emulation for a single DualSense (PS5) or DualShock 4 (PS4) controller.
 2. USB and BT connectivity support.
@@ -34,7 +36,6 @@ Roadmap:
 1. Battery indicator.
 2. Headphone jack support for game audio.
 
-##Credits to the original: https://github.com/Sar1911/DualSenseCompanion
 A huge thanks goes to:
 1. ViGEm (Virtual Gamepad Emulation Driver) – For providing the essential Xbox 360 controller emulation.
 2. HidHide – For allowing HID device filtering and hiding.
