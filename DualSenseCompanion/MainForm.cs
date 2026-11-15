@@ -5,16 +5,47 @@ using System.Windows.Forms;
 
 class MainForm : Form
 {
-    private readonly ToggleSwitch _controllerToggle = new() { Checked = true };
-    private readonly ToggleSwitch _triggerVibrationToggle = new() { Enabled = false };
+    private readonly AppSettings _settings;
+    private readonly ToggleSwitch _controllerToggle;
+    private readonly ToggleSwitch _triggerVibrationToggle;
+    private readonly TrackBar _leftDeadzoneSlider = new();
+    private readonly TrackBar _rightDeadzoneSlider = new();
+    private readonly Label _leftDeadzoneValue = new();
+    private readonly Label _rightDeadzoneValue = new();
     private readonly Label _statusLabel = new();
     private readonly Label _statusIndicator = new();
     private CancellationTokenSource? _activationCancellation;
     private Task? _activationTask;
+    private bool _updatingSettings;
+    private bool _settingsSaveErrorShown;
     private bool _closing;
 
     public MainForm()
     {
+        _settings = AppSettings.Load(out var settingsLoadError, out var configExists);
+        _controllerToggle = new ToggleSwitch
+        {
+            Checked = _settings.ControllerEmulationEnabled
+        };
+        _triggerVibrationToggle = new ToggleSwitch { Enabled = false };
+        ControllerManager.LeftJoystickDeadzonePercent = _settings.LeftJoystickDeadzonePercent;
+        ControllerManager.RightJoystickDeadzonePercent = _settings.RightJoystickDeadzonePercent;
+        ControllerManager.SetButtonMappings(_settings.ButtonMappings);
+        if (_settings.LightbarColor is Color configuredLightbarColor)
+        {
+            ControllerManager.SetLightbarColor(configuredLightbarColor);
+        }
+
+        if (settingsLoadError != null)
+        {
+            CrashReporter.Report("Failed to load application settings", new InvalidDataException(settingsLoadError));
+            MessageBox.Show(
+                settingsLoadError,
+                "DualSense Companion settings",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+        }
+
         Text = "DualSense Companion";
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -37,9 +68,25 @@ class MainForm : Form
         var card = new Panel
         {
             BackColor = Color.FromArgb(238, 15, 23, 40),
-            Bounds = new Rectangle(130, 190, 700, 390)
+            Bounds = new Rectangle(130, 190, 700, 430)
         };
         Controls.Add(card);
+
+        var optionsPage = new Panel
+        {
+            BackColor = Color.FromArgb(238, 15, 23, 40),
+            Bounds = new Rectangle(130, 190, 700, 430),
+            Visible = false
+        };
+        Controls.Add(optionsPage);
+
+        var buttonMappingPage = new Panel
+        {
+            BackColor = Color.FromArgb(238, 15, 23, 40),
+            Bounds = new Rectangle(130, 190, 700, 430),
+            Visible = false
+        };
+        Controls.Add(buttonMappingPage);
 
         var heading = new Label
         {
@@ -50,6 +97,15 @@ class MainForm : Form
             Location = new Point(32, 24)
         };
         card.Controls.Add(heading);
+
+        var moreOptionsButton = CreateNavigationButton("More options");
+        moreOptionsButton.Location = new Point(520, 24);
+        moreOptionsButton.Click += (_, _) =>
+        {
+            card.Visible = false;
+            optionsPage.Visible = true;
+        };
+        card.Controls.Add(moreOptionsButton);
 
         var description = new Label
         {
@@ -100,10 +156,325 @@ class MainForm : Form
         };
         card.Controls.Add(_statusLabel);
 
+        var optionsHeading = new Label
+        {
+            AutoSize = true,
+            Text = "More options",
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 18F),
+            Location = new Point(32, 24)
+        };
+        optionsPage.Controls.Add(optionsHeading);
+
+        var backButton = CreateNavigationButton("Back");
+        backButton.Location = new Point(560, 24);
+        backButton.Click += (_, _) =>
+        {
+            optionsPage.Visible = false;
+            card.Visible = true;
+        };
+        optionsPage.Controls.Add(backButton);
+
+        var buttonMappingButton = CreateNavigationButton("Button map");
+        buttonMappingButton.Bounds = new Rectangle(420, 24, 124, 40);
+        buttonMappingButton.Click += (_, _) =>
+        {
+            optionsPage.Visible = false;
+            buttonMappingPage.Visible = true;
+        };
+        optionsPage.Controls.Add(buttonMappingButton);
+
+        var optionsDescription = new Label
+        {
+            AutoSize = true,
+            Text = "Tune how controller input is mapped.",
+            ForeColor = Color.FromArgb(170, 184, 205),
+            Location = new Point(34, 64)
+        };
+        optionsPage.Controls.Add(optionsDescription);
+
+        var buttonMappingHeading = new Label
+        {
+            AutoSize = true,
+            Text = "Button remapping",
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 18F),
+            Location = new Point(32, 24)
+        };
+        buttonMappingPage.Controls.Add(buttonMappingHeading);
+
+        var buttonMappingBackButton = CreateNavigationButton("Back");
+        buttonMappingBackButton.Location = new Point(560, 24);
+        buttonMappingBackButton.Click += (_, _) =>
+        {
+            buttonMappingPage.Visible = false;
+            optionsPage.Visible = true;
+        };
+        buttonMappingPage.Controls.Add(buttonMappingBackButton);
+
+        var buttonMappingDescription = new Label
+        {
+            AutoSize = true,
+            Text = "Choose the Xbox 360 button emitted for each PlayStation digital button.",
+            ForeColor = Color.FromArgb(170, 184, 205),
+            Location = new Point(34, 64)
+        };
+        buttonMappingPage.Controls.Add(buttonMappingDescription);
+
+        for (var index = 0; index < ButtonRemapping.PlayStationButtons.Count; index++)
+        {
+            AddButtonMappingRow(
+                buttonMappingPage,
+                ButtonRemapping.PlayStationButtons[index],
+                index % 2,
+                index / 2);
+        }
+
+        var deadzoneHeading = new Label
+        {
+            AutoSize = true,
+            Text = "Left joystick deadzone",
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 11F),
+            Location = new Point(34, 112)
+        };
+        optionsPage.Controls.Add(deadzoneHeading);
+
+        var leftDeadzoneDescription = new Label
+        {
+            AutoSize = true,
+            Text = "Radial center deadzone for the left analog stick.",
+            ForeColor = Color.FromArgb(157, 172, 194),
+            Location = new Point(34, 139)
+        };
+        optionsPage.Controls.Add(leftDeadzoneDescription);
+
+        AddDeadzoneSlider(
+            optionsPage,
+            _leftDeadzoneSlider,
+            _leftDeadzoneValue,
+            _settings.LeftJoystickDeadzonePercent,
+            "Left joystick deadzone",
+            165);
+
+        var rightDeadzoneHeading = new Label
+        {
+            AutoSize = true,
+            Text = "Right joystick deadzone",
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 11F),
+            Location = new Point(34, 232)
+        };
+        optionsPage.Controls.Add(rightDeadzoneHeading);
+
+        var rightDeadzoneDescription = new Label
+        {
+            AutoSize = true,
+            Text = "Radial center deadzone for the right analog stick.",
+            ForeColor = Color.FromArgb(157, 172, 194),
+            Location = new Point(34, 259)
+        };
+        optionsPage.Controls.Add(rightDeadzoneDescription);
+
+        AddDeadzoneSlider(
+            optionsPage,
+            _rightDeadzoneSlider,
+            _rightDeadzoneValue,
+            _settings.RightJoystickDeadzonePercent,
+            "Right joystick deadzone",
+            285);
+
+        var lightbarColorHeading = new Label
+        {
+            AutoSize = true,
+            Text = "Controller lightbar color",
+            ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 11F),
+            Location = new Point(34, 350)
+        };
+        optionsPage.Controls.Add(lightbarColorHeading);
+
+        var lightbarColorButton = new Button
+        {
+            Text = "Choose color",
+            Bounds = new Rectangle(34, 378, 145, 38),
+            BackColor = Color.FromArgb(37, 99, 174),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI Semibold", 9F),
+            Cursor = Cursors.Hand,
+            UseVisualStyleBackColor = false
+        };
+        optionsPage.Controls.Add(lightbarColorButton);
+
+        var lightbarColorPreview = new Panel
+        {
+            BackColor = _settings.LightbarColor ?? Color.FromArgb(75, 88, 108),
+            Bounds = new Rectangle(195, 380, 40, 34),
+            BorderStyle = BorderStyle.FixedSingle
+        };
+        optionsPage.Controls.Add(lightbarColorPreview);
+
+        var lightbarColorValue = new Label
+        {
+            AutoSize = true,
+            Text = _settings.LightbarColor is Color selectedColor
+                ? $"#{selectedColor.R:X2}{selectedColor.G:X2}{selectedColor.B:X2}"
+                : "Not set",
+            ForeColor = Color.FromArgb(205, 215, 230),
+            Location = new Point(250, 389)
+        };
+        optionsPage.Controls.Add(lightbarColorValue);
+
         _controllerToggle.CheckedChanged += ControllerToggle_CheckedChanged;
         _triggerVibrationToggle.CheckedChanged += (_, _) =>
+        {
+            if (!_updatingSettings)
+            {
+                _settings.AdaptiveTriggerVibrationEnabled = _triggerVibrationToggle.Checked;
+                SaveSettings();
+            }
+
             ControllerManager.SetAdaptiveTriggerVibrationEnabled(_triggerVibrationToggle.Checked);
-        Shown += (_, _) => StartController();
+        };
+        _leftDeadzoneSlider.ValueChanged += (_, _) =>
+        {
+            _settings.LeftJoystickDeadzonePercent = _leftDeadzoneSlider.Value;
+            _leftDeadzoneValue.Text = $"{_leftDeadzoneSlider.Value}%";
+            ControllerManager.LeftJoystickDeadzonePercent = _leftDeadzoneSlider.Value;
+            SaveSettings();
+        };
+        _rightDeadzoneSlider.ValueChanged += (_, _) =>
+        {
+            _settings.RightJoystickDeadzonePercent = _rightDeadzoneSlider.Value;
+            _rightDeadzoneValue.Text = $"{_rightDeadzoneSlider.Value}%";
+            ControllerManager.RightJoystickDeadzonePercent = _rightDeadzoneSlider.Value;
+            SaveSettings();
+        };
+        lightbarColorButton.Click += (_, _) =>
+        {
+            using var colorDialog = new ColorDialog
+            {
+                AllowFullOpen = true,
+                FullOpen = true,
+                Color = _settings.LightbarColor ?? Color.White
+            };
+
+            if (colorDialog.ShowDialog(this) != DialogResult.OK)
+            {
+                return;
+            }
+
+            var color = Color.FromArgb(255, colorDialog.Color.R, colorDialog.Color.G, colorDialog.Color.B);
+            _settings.LightbarColor = color;
+            lightbarColorPreview.BackColor = color;
+            lightbarColorValue.Text = $"#{color.R:X2}{color.G:X2}{color.B:X2}";
+            ControllerManager.SetLightbarColor(color);
+            SaveSettings();
+        };
+        Shown += (_, _) =>
+        {
+            if (_controllerToggle.Checked)
+            {
+                StartController();
+            }
+            else
+            {
+                SetStatus("Controller emulation is off", false);
+            }
+        };
+
+        if (!configExists && settingsLoadError == null)
+        {
+            SaveSettings();
+        }
+    }
+
+    private static Button CreateNavigationButton(string text)
+    {
+        return new Button
+        {
+            Text = text,
+            Bounds = new Rectangle(0, 0, 108, 40),
+            BackColor = Color.FromArgb(37, 99, 174),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font("Segoe UI Semibold", 9F),
+            Cursor = Cursors.Hand,
+            UseVisualStyleBackColor = false
+        };
+    }
+
+    private static void AddDeadzoneSlider(
+        Control parent,
+        TrackBar slider,
+        Label valueLabel,
+        int value,
+        string accessibleName,
+        int top)
+    {
+        slider.Minimum = 0;
+        slider.Maximum = AppSettings.MaximumJoystickDeadzonePercent;
+        slider.Value = value;
+        slider.TickFrequency = 5;
+        slider.SmallChange = 1;
+        slider.LargeChange = 5;
+        slider.Bounds = new Rectangle(28, top, 450, 55);
+        slider.AccessibleName = $"{accessibleName} percentage";
+        parent.Controls.Add(slider);
+
+        valueLabel.AutoSize = true;
+        valueLabel.Text = $"{value}%";
+        valueLabel.ForeColor = Color.White;
+        valueLabel.Font = new Font("Segoe UI Semibold", 12F);
+        valueLabel.Location = new Point(510, top + 12);
+        parent.Controls.Add(valueLabel);
+    }
+
+    private void AddButtonMappingRow(
+        Control parent,
+        PlayStationButton source,
+        int column,
+        int row)
+    {
+        var columnLeft = column == 0 ? 32 : 350;
+        var top = 104 + row * 35;
+        var label = new Label
+        {
+            AutoSize = false,
+            Text = ButtonRemapping.GetDisplayName(source),
+            ForeColor = Color.White,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Bounds = new Rectangle(columnLeft, top, 105, 26)
+        };
+        parent.Controls.Add(label);
+
+        var comboBox = new ComboBox
+        {
+            DropDownStyle = ComboBoxStyle.DropDownList,
+            Bounds = new Rectangle(columnLeft + 108, top, 178, 26),
+            AccessibleName = $"{ButtonRemapping.GetDisplayName(source)} mapping"
+        };
+        foreach (var target in ButtonRemapping.XboxButtons)
+        {
+            comboBox.Items.Add(target);
+        }
+
+        var currentTarget = _settings.ButtonMappings[source];
+        comboBox.SelectedItem = ButtonRemapping.XboxButtons
+            .First(option => option.Value == currentTarget);
+        comboBox.SelectedIndexChanged += (_, _) =>
+        {
+            if (comboBox.SelectedItem is not XboxButtonOption selectedTarget)
+            {
+                return;
+            }
+
+            _settings.ButtonMappings[source] = selectedTarget.Value;
+            ControllerManager.SetButtonMapping(source, selectedTarget.Value);
+            SaveSettings();
+        };
+        parent.Controls.Add(comboBox);
     }
 
     private static void AddSettingRow(
@@ -138,6 +509,9 @@ class MainForm : Form
 
     private void ControllerToggle_CheckedChanged(object? sender, EventArgs e)
     {
+        _settings.ControllerEmulationEnabled = _controllerToggle.Checked;
+        SaveSettings();
+
         if (_controllerToggle.Checked)
         {
             StartController();
@@ -150,8 +524,7 @@ class MainForm : Form
 
     private void StartController()
     {
-        _triggerVibrationToggle.Checked = false;
-        _triggerVibrationToggle.Enabled = false;
+        SetTriggerVibrationToggle(false, false);
         _activationCancellation = new CancellationTokenSource();
         var cancellationToken = _activationCancellation.Token;
         SetStatus("Waiting for a PlayStation controller…", false);
@@ -191,9 +564,7 @@ class MainForm : Form
     private async Task StopControllerAsync()
     {
         _controllerToggle.Enabled = false;
-        _triggerVibrationToggle.Checked = false;
-        _triggerVibrationToggle.Enabled = false;
-        ControllerManager.SetAdaptiveTriggerVibrationEnabled(false);
+        SetTriggerVibrationToggle(false, false);
         _activationCancellation?.Cancel();
         ControllerManager.StopListening();
 
@@ -227,12 +598,67 @@ class MainForm : Form
             return;
         }
 
-        _triggerVibrationToggle.Checked = false;
-        _triggerVibrationToggle.Enabled = isDualSense;
-        ControllerManager.SetAdaptiveTriggerVibrationEnabled(false);
+        SetTriggerVibrationToggle(
+            isDualSense && _settings.AdaptiveTriggerVibrationEnabled,
+            isDualSense);
+        if (_settings.LightbarColor is Color lightbarColor)
+        {
+            ControllerManager.SetLightbarColor(lightbarColor);
+        }
+
         SetStatus(
             $"{(isDualSense ? "DualSense" : "DualShock 4")} connected · Xbox 360 emulation active",
             true);
+    }
+
+    private void SetTriggerVibrationToggle(bool isChecked, bool isEnabled)
+    {
+        _updatingSettings = true;
+        try
+        {
+            _triggerVibrationToggle.Checked = isChecked;
+            _triggerVibrationToggle.Enabled = isEnabled;
+        }
+        finally
+        {
+            _updatingSettings = false;
+        }
+
+        ControllerManager.SetAdaptiveTriggerVibrationEnabled(isChecked);
+    }
+
+    private void SaveSettings()
+    {
+        try
+        {
+            _settings.Save();
+            _settingsSaveErrorShown = false;
+        }
+        catch (IOException ex)
+        {
+            ReportSettingsSaveFailure(ex);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            ReportSettingsSaveFailure(ex);
+        }
+    }
+
+    private void ReportSettingsSaveFailure(Exception exception)
+    {
+        CrashReporter.Report("Failed to save application settings", exception);
+        if (_settingsSaveErrorShown)
+        {
+            return;
+        }
+
+        _settingsSaveErrorShown = true;
+        MessageBox.Show(
+            this,
+            $"Settings could not be saved to {AppSettings.ConfigPath}: {exception.Message}",
+            "DualSense Companion settings",
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Warning);
     }
 
     private void CleanupController()
@@ -275,8 +701,7 @@ class MainForm : Form
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         _closing = true;
-        _triggerVibrationToggle.Checked = false;
-        ControllerManager.SetAdaptiveTriggerVibrationEnabled(false);
+        SetTriggerVibrationToggle(false, false);
         _activationCancellation?.Cancel();
         ControllerManager.StopListening();
 

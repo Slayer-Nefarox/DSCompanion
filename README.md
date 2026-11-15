@@ -13,16 +13,28 @@ What This App Can Do:
 
 The adaptive-trigger vibration toggle is only available when a DualSense is detected.
 DualShock 4 controllers do not support adaptive triggers and are not sent trigger effects.
+The More options page includes separate radial joystick deadzone settings for the left and right sticks
+(0–50% each; 0% disables that stick's deadzone) and a lightbar color picker for DualSense and
+DualShock 4 controllers. Its Button map page lets you remap each supported digital PlayStation button
+to any Xbox 360 button; L2/R2 remain analog triggers. Settings are loaded from and saved to `config.txt`
+beside the application, and the chosen lightbar color is applied when a supported controller connects.
 
 Crash and unexpected controller-disconnect reports are written as timestamped `.txt` files
 to the `crash` folder beside the running application. After a controller disconnects, the app
 now retries the HID connection; output reports use the length advertised by the connected device.
 
+What I'm currently working on:
+1. Option to enable automatic startup with Windows.
+2. Adding support for up to 4 controllers.
 
 The window uses `DualSenseCompanion\img\background.jpg` and
 `DualSenseCompanion\img\logo.jpg`; replace these files to customize its artwork.
 
-## credits to Sar1911 : https://github.com/Sar1911/DualSenseCompanion
+Roadmap:
+1. Battery indicator.
+2. Headphone jack support for game audio.
+
+
 A huge thanks goes to:
 1. ViGEm (Virtual Gamepad Emulation Driver) – For providing the essential Xbox 360 controller emulation.
 2. HidHide – For allowing HID device filtering and hiding.

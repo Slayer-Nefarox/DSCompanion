@@ -1,6 +1,7 @@
 ﻿using HidSharp;
 using Nefarius.ViGEm.Client.Targets.Xbox360;
 using DualSenseCompanion;
+using System.Drawing;
 using System.Reactive.Linq;
 using System.Threading;
 
@@ -19,12 +20,100 @@ class ControllerManager
     private static bool _isBluetooth = false;
     private static ControllerType _controllerType;
     private static int _outputReportLength;
+    private static int _leftJoystickDeadzonePercent;
+    private static int _rightJoystickDeadzonePercent;
+    private static int _lightbarColorArgb = Color.White.ToArgb();
+    private static int _hasLightbarColor;
+    private static Xbox360Button[] _buttonMappings = ButtonRemapping.CreateDefaultTargetArray();
     private static volatile bool _adaptiveTriggerVibrationEnabled;
     private static byte _lastLeftMotor;
     private static byte _lastRightMotor;
     private static byte _bluetoothSequence;
     private static int _dualSenseWriteFailureReported;
     private static int _dualShock4WriteFailureReported;
+
+    public static int LeftJoystickDeadzonePercent
+    {
+        get => Volatile.Read(ref _leftJoystickDeadzonePercent);
+        set
+        {
+            Volatile.Write(ref _leftJoystickDeadzonePercent, ValidateJoystickDeadzone(value));
+        }
+    }
+
+    public static int RightJoystickDeadzonePercent
+    {
+        get => Volatile.Read(ref _rightJoystickDeadzonePercent);
+        set
+        {
+            Volatile.Write(ref _rightJoystickDeadzonePercent, ValidateJoystickDeadzone(value));
+        }
+    }
+
+    private static int ValidateJoystickDeadzone(int value)
+    {
+        if (value < 0 || value > AppSettings.MaximumJoystickDeadzonePercent)
+        {
+            throw new ArgumentOutOfRangeException(nameof(value));
+        }
+
+        return value;
+    }
+
+    public static void SetButtonMappings(
+        IReadOnlyDictionary<PlayStationButton, Xbox360Button> mappings)
+    {
+        var updatedMappings = new Xbox360Button[ButtonRemapping.PlayStationButtons.Count];
+        foreach (var source in ButtonRemapping.PlayStationButtons)
+        {
+            if (!mappings.TryGetValue(source, out var target) || !ButtonRemapping.IsXboxButton(target))
+            {
+                throw new ArgumentException($"Missing or invalid mapping for {source}.", nameof(mappings));
+            }
+
+            updatedMappings[(int)source] = target;
+        }
+
+        Volatile.Write(ref _buttonMappings, updatedMappings);
+    }
+
+    public static void SetButtonMapping(PlayStationButton source, Xbox360Button target)
+    {
+        if (!Enum.IsDefined(source))
+        {
+            throw new ArgumentOutOfRangeException(nameof(source));
+        }
+
+        if (!ButtonRemapping.IsXboxButton(target))
+        {
+            throw new ArgumentOutOfRangeException(nameof(target));
+        }
+
+        var updatedMappings = (Xbox360Button[])Volatile.Read(ref _buttonMappings).Clone();
+        updatedMappings[(int)source] = target;
+        Volatile.Write(ref _buttonMappings, updatedMappings);
+    }
+
+    public static void SetLightbarColor(Color color)
+    {
+        var opaqueColor = Color.FromArgb(color.R, color.G, color.B);
+        Interlocked.Exchange(ref _lightbarColorArgb, opaqueColor.ToArgb());
+        Volatile.Write(ref _hasLightbarColor, 1);
+
+        if (_outputStream == null)
+        {
+            return;
+        }
+
+        if (_controllerType == ControllerType.DualShock4)
+        {
+            SendVibrationToDualShock4(_lastLeftMotor, _lastRightMotor);
+        }
+        else
+        {
+            SendDualSenseOutput(_lastLeftMotor, _lastRightMotor, _adaptiveTriggerVibrationEnabled);
+        }
+    }
 
     public static void StartListening(CancellationToken cancellationToken, Action<bool> controllerDetected)
     {
@@ -371,23 +460,30 @@ class ControllerManager
                                         short xboxLeftStickX, short xboxLeftStickY,
                                         short xboxRightStickX, short xboxRightStickY)
     {
-        XboxEmulator.SetButtonState(Xbox360Button.A, crossPressed);
-        XboxEmulator.SetButtonState(Xbox360Button.B, circlePressed);
-        XboxEmulator.SetButtonState(Xbox360Button.X, squarePressed);
-        XboxEmulator.SetButtonState(Xbox360Button.Y, trianglePressed);
+        ApplyJoystickDeadzone(ref xboxLeftStickX, ref xboxLeftStickY, LeftJoystickDeadzonePercent);
+        ApplyJoystickDeadzone(ref xboxRightStickX, ref xboxRightStickY, RightJoystickDeadzonePercent);
 
-        XboxEmulator.SetButtonState(Xbox360Button.LeftShoulder, l1Pressed);
-        XboxEmulator.SetButtonState(Xbox360Button.RightShoulder, r1Pressed);
-        XboxEmulator.SetButtonState(Xbox360Button.LeftThumb, l3Pressed);
-        XboxEmulator.SetButtonState(Xbox360Button.RightThumb, r3Pressed);
-        XboxEmulator.SetButtonState(Xbox360Button.Start, optionsPressed);
-        XboxEmulator.SetButtonState(Xbox360Button.Back, createPressed);
-        XboxEmulator.SetButtonState(Xbox360Button.Guide, psPressed);
-
-        XboxEmulator.SetButtonState(Xbox360Button.Up, dpadUp);
-        XboxEmulator.SetButtonState(Xbox360Button.Down, dpadDown);
-        XboxEmulator.SetButtonState(Xbox360Button.Left, dpadLeft);
-        XboxEmulator.SetButtonState(Xbox360Button.Right, dpadRight);
+        var mappings = Volatile.Read(ref _buttonMappings);
+        foreach (var target in ButtonRemapping.XboxButtons)
+        {
+            var isPressed =
+                (crossPressed && mappings[(int)PlayStationButton.Cross] == target.Value)
+                || (circlePressed && mappings[(int)PlayStationButton.Circle] == target.Value)
+                || (squarePressed && mappings[(int)PlayStationButton.Square] == target.Value)
+                || (trianglePressed && mappings[(int)PlayStationButton.Triangle] == target.Value)
+                || (l1Pressed && mappings[(int)PlayStationButton.L1] == target.Value)
+                || (r1Pressed && mappings[(int)PlayStationButton.R1] == target.Value)
+                || (l3Pressed && mappings[(int)PlayStationButton.L3] == target.Value)
+                || (r3Pressed && mappings[(int)PlayStationButton.R3] == target.Value)
+                || (createPressed && mappings[(int)PlayStationButton.CreateShare] == target.Value)
+                || (optionsPressed && mappings[(int)PlayStationButton.Options] == target.Value)
+                || (psPressed && mappings[(int)PlayStationButton.PsButton] == target.Value)
+                || (dpadUp && mappings[(int)PlayStationButton.DpadUp] == target.Value)
+                || (dpadDown && mappings[(int)PlayStationButton.DpadDown] == target.Value)
+                || (dpadLeft && mappings[(int)PlayStationButton.DpadLeft] == target.Value)
+                || (dpadRight && mappings[(int)PlayStationButton.DpadRight] == target.Value);
+            XboxEmulator.SetButtonState(target.Value, isPressed);
+        }
 
         XboxEmulator.SetTriggerState(Xbox360Slider.LeftTrigger, lTrigger);
         XboxEmulator.SetTriggerState(Xbox360Slider.RightTrigger, rTrigger);
@@ -396,6 +492,30 @@ class ControllerManager
         XboxEmulator.SetAxisState(Xbox360Axis.LeftThumbY, xboxLeftStickY);
         XboxEmulator.SetAxisState(Xbox360Axis.RightThumbX, xboxRightStickX);
         XboxEmulator.SetAxisState(Xbox360Axis.RightThumbY, xboxRightStickY);
+    }
+
+    private static void ApplyJoystickDeadzone(ref short x, ref short y, int deadzonePercent)
+    {
+        if (deadzonePercent == 0)
+        {
+            return;
+        }
+
+        var magnitude = Math.Sqrt((double)x * x + (double)y * y);
+        var deadzoneMagnitude = short.MaxValue * deadzonePercent / 100.0;
+        if (magnitude <= deadzoneMagnitude)
+        {
+            x = 0;
+            y = 0;
+            return;
+        }
+
+        var scaledMagnitude = (magnitude - deadzoneMagnitude)
+            * short.MaxValue
+            / (short.MaxValue - deadzoneMagnitude);
+        var scale = scaledMagnitude / magnitude;
+        x = (short)Math.Clamp(Math.Round(x * scale), short.MinValue, short.MaxValue);
+        y = (short)Math.Clamp(Math.Round(y * scale), short.MinValue, short.MaxValue);
     }
 
 
@@ -544,6 +664,8 @@ class ControllerManager
         }
 
         byte[] vibrationReport = new byte[_outputReportLength];
+        bool hasLightbarColor = Volatile.Read(ref _hasLightbarColor) != 0;
+        Color lightbarColor = Color.FromArgb(Volatile.Read(ref _lightbarColorArgb));
 
         if (_isBluetooth)
         {
@@ -565,7 +687,17 @@ class ControllerManager
             vibrationReport[41] = 0x04;
             vibrationReport[43] = 0x02;
             vibrationReport[44] = 0x02;
-            vibrationReport[48] = 0xFF;
+            if (hasLightbarColor)
+            {
+                vibrationReport[4] |= 0x04;
+                vibrationReport[47] = lightbarColor.R;
+                vibrationReport[48] = lightbarColor.G;
+                vibrationReport[49] = lightbarColor.B;
+            }
+            else
+            {
+                vibrationReport[48] = 0xFF;
+            }
 
             byte[] crcData = new byte[75];
             crcData[0] = 0xA2;
@@ -587,6 +719,13 @@ class ControllerManager
                     vibrationReport, 11, _adaptiveTriggerVibrationEnabled ? rightMotor : (byte)0);
                 WriteTriggerVibrationEffect(
                     vibrationReport, 22, _adaptiveTriggerVibrationEnabled ? leftMotor : (byte)0);
+            }
+            if (hasLightbarColor)
+            {
+                vibrationReport[2] |= 0x04;
+                vibrationReport[45] = lightbarColor.R;
+                vibrationReport[46] = lightbarColor.G;
+                vibrationReport[47] = lightbarColor.B;
             }
         }
 
@@ -660,15 +799,23 @@ class ControllerManager
         }
 
         byte[] vibrationReport = new byte[_outputReportLength];
+        bool hasLightbarColor = Volatile.Read(ref _hasLightbarColor) != 0;
+        Color lightbarColor = Color.FromArgb(Volatile.Read(ref _lightbarColorArgb));
 
         if (_isBluetooth)
         {
             vibrationReport[0] = 0x11;
             vibrationReport[1] = 0xC0;
             vibrationReport[2] = 0xA0;
-            vibrationReport[3] = 0x01;
+            vibrationReport[3] = hasLightbarColor ? (byte)0x03 : (byte)0x01;
             vibrationReport[6] = rightMotor;
             vibrationReport[7] = leftMotor;
+            if (hasLightbarColor)
+            {
+                vibrationReport[8] = lightbarColor.R;
+                vibrationReport[9] = lightbarColor.G;
+                vibrationReport[10] = lightbarColor.B;
+            }
 
             byte[] crcData = new byte[75];
             crcData[0] = 0xA2;
@@ -679,9 +826,15 @@ class ControllerManager
         else
         {
             vibrationReport[0] = 0x05;
-            vibrationReport[1] = 0x01;
+            vibrationReport[1] = hasLightbarColor ? (byte)0x03 : (byte)0x01;
             vibrationReport[4] = rightMotor;
             vibrationReport[5] = leftMotor;
+            if (hasLightbarColor)
+            {
+                vibrationReport[6] = lightbarColor.R;
+                vibrationReport[7] = lightbarColor.G;
+                vibrationReport[8] = lightbarColor.B;
+            }
         }
 
         try
