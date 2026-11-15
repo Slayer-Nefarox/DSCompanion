@@ -14,12 +14,18 @@ What This App Can Do:
 7. Optional Xbox rumble mirrored as adaptive-trigger vibration on DualSense controllers.
 
 The adaptive-trigger vibration toggle is only available when a DualSense is detected.
+
 DualShock 4 controllers do not support adaptive triggers and are not sent trigger effects.
+
 The More options page includes separate radial joystick deadzone settings for the left and right sticks
 (0–50% each; 0% disables that stick's deadzone) and a lightbar color picker for DualSense and
-DualShock 4 controllers. Its Button map page lets you remap each supported digital PlayStation button
-to any Xbox 360 button; L2/R2 remain analog triggers. Settings are loaded from and saved to `config.txt`
-beside the application, and the chosen lightbar color is applied when a supported controller connects.
+DualShock 4 controllers. 
+
+Its Button map page lets you remap each supported digital PlayStation button
+to any Xbox 360 button; 
+L2/R2 remain analog triggers. 
+
+Settings are loaded from and saved to `config.txt` beside the application, and the chosen lightbar color is applied when a supported controller connects.
 
 Crash and unexpected controller-disconnect reports are written as timestamped `.txt` files
 to the `crash` folder beside the running application. After a controller disconnects, the app
