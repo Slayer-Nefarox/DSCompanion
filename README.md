@@ -27,7 +27,6 @@ now retries the HID connection; output reports use the length advertised by the 
 
 What I'm currently working on:
 1. Option to enable automatic startup with Windows.
-2. Adding support for up to 4 controllers.
 
 The window uses `DualSenseCompanion\img\background.jpg` and
 `DualSenseCompanion\img\logo.jpg`; replace these files to customize its artwork.
