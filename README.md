@@ -12,6 +12,9 @@ What This App Can Do:
 5. Dependency check and install on startup.
 6. Desktop controls to enable or disable controller hiding and Xbox 360 emulation.
 7. Optional Xbox rumble mirrored as adaptive-trigger vibration on DualSense controllers.
+8. LED color control (USB only)
+9. Button Remapping
+10. Joystick center deadzone configuration
 
 The adaptive-trigger vibration toggle is only available when a DualSense is detected.
 
