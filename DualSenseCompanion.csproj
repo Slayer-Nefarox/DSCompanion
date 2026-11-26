@@ -1,0 +1,49 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.26100.0</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <StartupObject>Program</StartupObject>
+    <SupportedOSPlatformVersion>7.0</SupportedOSPlatformVersion>
+    <ApplicationIcon>icon_6Q2_icon.ico</ApplicationIcon>
+    <PackageId>DSCompanion</PackageId>
+    <Title>DualSenseCompanion</Title>
+    <Authors>Gabriel Spressola Ziviani</Authors>
+    <Company>Slayer_Nefarox</Company>
+    <Product>DSCompanion</Product>
+    <Description>A Input reprogrammer for Dualsense, Dualshock 4, and Xinput.</Description>
+    <AssemblyName>DSCompanion</AssemblyName>
+    <RootNamespace>DSCompanion</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="icon_6Q2_icon.ico" />
+    <Content Include="img\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HidSharp" Version="2.1.0" />
+    <PackageReference Include="Nefarius.Drivers.HidHide" Version="2.4.1" />
+    <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
+    <PackageReference Include="System.Management" Version="9.0.3" />
+    <PackageReference Include="System.Reactive.Windows.Forms" Version="6.0.1" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="9.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="DSToolsIcon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <Target Name="CreateCrashReportDirectory" AfterTargets="Build">
+    <MakeDir Directories="$(TargetDir)crash" />
+  </Target>
+
+</Project>
